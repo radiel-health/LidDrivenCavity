@@ -1,0 +1,18 @@
+{
+  "test_loss_normalized": 0.018939155153930187,
+  "mae_x_Pa": 1.3942781151854433e-07,
+  "mae_y_Pa": 8.365986303715545e-08,
+  "mae_magnitude_Pa": 5.7752700399760215e-08,
+  "rmse_x_Pa": 1.709370316141316e-07,
+  "rmse_y_Pa": 1.0436705427778359e-07,
+  "rmse_magnitude_Pa": 7.806776078338872e-08,
+  "r2_x": 0.8999232649803162,
+  "r2_y": 0.917611837387085,
+  "r2_magnitude": 0.9812390804290771,
+  "median_rel_error_x_percent": 28.605484008789062,
+  "median_rel_error_y_percent": 32.27617263793945,
+  "median_rel_error_magnitude_percent": 21.492233276367188,
+  "mean_rel_error_x_percent": 49.752620697021484,
+  "mean_rel_error_y_percent": 58.31896209716797,
+  "mean_rel_error_magnitude_percent": 26.351369857788086
+}
