@@ -375,15 +375,12 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-def get_model_summary(model, node_feature_dim=10, batch_size=8, num_nodes=200):
+def get_model_summary(model):
     """
     Print model architecture summary.
     
     Args:
         model: WSSPredictor instance
-        node_feature_dim: Number of node features
-        batch_size: Batch size for dummy input
-        num_nodes: Approximate number of nodes per graph
     """
     print("=" * 80)
     print("MODEL ARCHITECTURE SUMMARY")
@@ -461,6 +458,8 @@ if __name__ == "__main__":
     
     # Create PyG batch
     from torch_geometric.data import Data, Batch
+
+    # for single graph inference, just pass in just one data object
     
     data1 = Data(x=x1, edge_index=edge_index1, flow_params=flow_params[0:1])
     data2 = Data(x=x2, edge_index=edge_index2, flow_params=flow_params[1:2])
