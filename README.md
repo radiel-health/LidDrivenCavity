@@ -1,2 +1,2 @@
 # LidDrivenCavity
-Model for Lid Driven Cavity Simulations + Web App
+Model and Inferencing for Lid Driven Cavity Simulations
