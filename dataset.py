@@ -128,9 +128,9 @@ class WSSDataset(Dataset):
         
         print(f"\nSplit: {self.split}")
         print(f"  Total graphs: {len(self.files)}")
-        print(f"  1x1: {sum(1 for f in self.files if '1x1' in f.stem)}")
-        print(f"  1x2: {sum(1 for f in self.files if '1x2' in f.stem)}")
-        print(f"  2x1: {sum(1 for f in self.files if '2x1' in f.stem)}")
+        print(f"  1x1: {sum(1 for f in self.files if '1x1' in str(f.parent))}")
+        print(f"  1x2: {sum(1 for f in self.files if '1x2' in str(f.parent))}")
+        print(f"  2x1: {sum(1 for f in self.files if '2x1' in str(f.parent))}")
     
     def _load_or_compute_stats(self):
         """Load normalization stats from file or compute from training set"""
