@@ -42,7 +42,6 @@ def load_best_model(checkpoint_path='Models/best_model.pt'):
     
     return model
 
-
 def denormalize_wss(wss_normalized, stats):
     """
     Convert normalized WSS back to physical units.
@@ -83,6 +82,8 @@ def evaluate_model(model, test_loader, stats):
     all_targets_phys = []
     all_re = []
     all_aspect = []
+    all_node_features = []  # Store all node features for spatial analysis
+    all_coordinates = []     # Store raw coordinates
     test_loss = 0.0
     
     device = torch.device('cpu')  # Use CPU for evaluation
@@ -108,6 +109,10 @@ def evaluate_model(model, test_loader, stats):
             all_preds_phys.append(pred_phys)
             all_targets_phys.append(target_phys)
             
+            # Store spatial features and coordinates
+            all_node_features.append(batch.x.cpu().numpy())
+            all_coordinates.append(batch.pos.cpu().numpy())
+            
             # Store metadata (Re and aspect ratio from flow_params)
             # batch.re, batch.lx, batch.ly are batched tensors
             re_vals = batch.re.cpu().numpy()
@@ -129,6 +134,8 @@ def evaluate_model(model, test_loader, stats):
     targets_norm = np.vstack(all_targets_norm)
     preds_phys = np.vstack(all_preds_phys)
     targets_phys = np.vstack(all_targets_phys)
+    node_features = np.vstack(all_node_features)  # [N_total, 10]
+    coordinates = np.vstack(all_coordinates)      # [N_total, 2]
     
     # Compute metrics
     test_loss = test_loss / len(test_loader)
@@ -194,6 +201,8 @@ def evaluate_model(model, test_loader, stats):
         'rel_error_mag': rel_error_mag,
         're_values': np.array(all_re),
         'aspect_ratios': np.array(all_aspect),
+        'node_features': node_features,
+        'coordinates': coordinates,
     }
     
     return metrics, results
@@ -368,6 +377,368 @@ def plot_error_distribution(results, output_dir='results'):
     plt.close()
 
 
+def analyze_by_wall_location(results, output_dir='results'):
+    """Analyze errors by wall location (top/bottom/left/right)."""  
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Extract wall labels from node features
+    # Features: [x_norm, y_norm, on_top, on_bottom, on_left, on_right, arc_length, corner_dist, is_moving, ...]
+    on_top = results['node_features'][:, 2].astype(bool)
+    on_bottom = results['node_features'][:, 3].astype(bool)
+    on_left = results['node_features'][:, 4].astype(bool)
+    on_right = results['node_features'][:, 5].astype(bool)
+    
+    # Compute absolute errors
+    abs_error_mag = np.abs(results['target_mag'] - results['pred_mag'])
+    abs_error_x = np.abs(results['targets_phys'][:, 0] - results['preds_phys'][:, 0])
+    abs_error_y = np.abs(results['targets_phys'][:, 1] - results['preds_phys'][:, 1])
+    
+    # Wall statistics
+    walls = {
+        'Top (Moving)': on_top,
+        'Bottom': on_bottom,
+        'Left': on_left,
+        'Right': on_right
+    }
+    
+    wall_stats = {}
+    for wall_name, wall_mask in walls.items():
+        if wall_mask.sum() > 0:
+            wall_stats[wall_name] = {
+                'count': int(wall_mask.sum()),
+                'mae_mag': float(abs_error_mag[wall_mask].mean()),
+                'mae_x': float(abs_error_x[wall_mask].mean()),
+                'mae_y': float(abs_error_y[wall_mask].mean()),
+                'rmse_mag': float(np.sqrt((abs_error_mag[wall_mask]**2).mean())),
+                'r2_mag': float(r2_score(results['target_mag'][wall_mask], results['pred_mag'][wall_mask])),
+            }
+    
+    # Create visualization
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Bar chart: MAE by wall
+    ax = axes[0]
+    wall_names = list(wall_stats.keys())
+    mae_values = [wall_stats[w]['mae_mag'] for w in wall_names]
+    colors = ['red', 'blue', 'green', 'orange']
+    
+    bars = ax.bar(wall_names, mae_values, color=colors, alpha=0.7, edgecolor='black')
+    ax.set_ylabel('Mean Absolute Error (Pa)', fontsize=12)
+    ax.set_title('Error by Wall Location', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add value labels on bars
+    for bar, val in zip(bars, mae_values):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{val:.2e}',
+                ha='center', va='bottom', fontsize=10)
+    
+    # Box plot: Error distribution by wall
+    ax = axes[1]
+    error_data = [abs_error_mag[walls[w]] for w in wall_names]
+    bp = ax.boxplot(error_data, labels=wall_names, patch_artist=True)
+    
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
+    
+    ax.set_ylabel('Absolute Error in WSS Magnitude (Pa)', fontsize=12)
+    ax.set_title('Error Distribution by Wall', fontsize=14, fontweight='bold')
+    ax.set_yscale('log')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_by_wall.png', dpi=150, bbox_inches='tight')
+    print(f"Saved: {output_dir / 'error_by_wall.png'}")
+    plt.close()
+    
+    # Save statistics
+    with open(output_dir / 'error_by_wall.json', 'w') as f:
+        json.dump(wall_stats, f, indent=2)
+    print(f"Saved: {output_dir / 'error_by_wall.json'}")
+    
+    # Print summary
+    print("\n" + "="*60)
+    print("ERROR BREAKDOWN BY WALL LOCATION")
+    print("="*60)
+    for wall_name, stats in wall_stats.items():
+        print(f"\n{wall_name}:")
+        print(f"  Nodes: {stats['count']}")
+        print(f"  MAE (magnitude): {stats['mae_mag']:.6e} Pa")
+        print(f"  RMSE (magnitude): {stats['rmse_mag']:.6e} Pa")
+        print(f"  R² (magnitude): {stats['r2_mag']:.6f}")
+    print("="*60)
+    
+    return wall_stats
+
+
+def analyze_by_corner_proximity(results, output_dir='results'):
+    """Analyze how errors vary with distance from corners."""  
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Extract corner distance from node features (index 7)
+    corner_distance = results['node_features'][:, 7]
+    abs_error_mag = np.abs(results['target_mag'] - results['pred_mag'])
+    
+    # Create distance bins
+    bins = np.array([0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1.0])
+    bin_labels = ['0-0.05', '0.05-0.1', '0.1-0.15', '0.15-0.2', '0.2-0.3', '0.3-0.4', '0.4-0.5', '0.5+']
+    
+    # Compute statistics per bin
+    bin_stats = []
+    for i in range(len(bins) - 1):
+        mask = (corner_distance >= bins[i]) & (corner_distance < bins[i+1])
+        if mask.sum() > 0:
+            bin_stats.append({
+                'bin': bin_labels[i],
+                'center': (bins[i] + bins[i+1]) / 2,
+                'count': int(mask.sum()),
+                'mean_error': float(abs_error_mag[mask].mean()),
+                'std_error': float(abs_error_mag[mask].std()),
+                'median_error': float(np.median(abs_error_mag[mask])),
+            })
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # Scatter plot with binned overlay
+    ax = axes[0]
+    ax.scatter(corner_distance, abs_error_mag, alpha=0.3, s=5, c='blue', edgecolors='none')
+    
+    # Overlay binned means
+    bin_centers = [s['center'] for s in bin_stats]
+    bin_means = [s['mean_error'] for s in bin_stats]
+    bin_stds = [s['std_error'] for s in bin_stats]
+    
+    ax.errorbar(bin_centers, bin_means, yerr=bin_stds, 
+                fmt='o-', color='red', linewidth=2, markersize=8,
+                capsize=5, label='Binned Mean ± Std')
+    
+    ax.set_xlabel('Normalized Distance to Nearest Corner', fontsize=12)
+    ax.set_ylabel('Absolute Error in WSS Magnitude (Pa)', fontsize=12)
+    ax.set_title('Error vs Corner Proximity', fontsize=14, fontweight='bold')
+    ax.set_yscale('log')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Bar chart: Mean error by distance bin
+    ax = axes[1]
+    bin_names = [s['bin'] for s in bin_stats]
+    bin_means = [s['mean_error'] for s in bin_stats]
+    
+    bars = ax.bar(bin_names, bin_means, alpha=0.7, color='purple', edgecolor='black')
+    ax.set_xlabel('Distance from Corner (normalized)', fontsize=12)
+    ax.set_ylabel('Mean Absolute Error (Pa)', fontsize=12)
+    ax.set_title('Mean Error by Corner Distance Bin', fontsize=14, fontweight='bold')
+    ax.set_yscale('log')
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.xticks(rotation=45)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_by_corner_distance.png', dpi=150, bbox_inches='tight')
+    print(f"Saved: {output_dir / 'error_by_corner_distance.png'}")
+    plt.close()
+    
+    return bin_stats
+
+
+def analyze_by_arc_position(results, output_dir='results'):
+    """Analyze error variation along boundary perimeter using MSE."""  
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Extract arc length (0=start at bottom-left, 1=full loop CCW)
+    arc_length = results['node_features'][:, 6]
+    abs_error_mag = np.abs(results['target_mag'] - results['pred_mag'])
+    squared_error_mag = (results['target_mag'] - results['pred_mag'])**2
+    
+    # Create arc segments (20 bins along boundary)
+    n_segments = 20
+    arc_bins = np.linspace(0, 1, n_segments + 1)
+    arc_centers = (arc_bins[:-1] + arc_bins[1:]) / 2
+    
+    # Compute error metrics per segment
+    segment_mae = []
+    segment_mse = []
+    segment_rmse = []
+    
+    for i in range(n_segments):
+        mask = (arc_length >= arc_bins[i]) & (arc_length < arc_bins[i+1])
+        if mask.sum() > 0:
+            segment_mae.append(abs_error_mag[mask].mean())
+            segment_mse.append(squared_error_mag[mask].mean())
+            segment_rmse.append(np.sqrt(squared_error_mag[mask].mean()))
+        else:
+            segment_mae.append(np.nan)
+            segment_mse.append(np.nan)
+            segment_rmse.append(np.nan)
+    
+    segment_mae = np.array(segment_mae)
+    segment_mse = np.array(segment_mse)
+    segment_rmse = np.array(segment_rmse)
+    
+    # Create visualization with 2 subplots: MSE and RMSE
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+    
+    # Plot 1: MSE along boundary
+    ax = axes[0]
+    ax.plot(arc_centers, segment_mse, 'o-', color='darkred', linewidth=2, markersize=6, label='MSE')
+    
+    # Annotate wall transitions
+    wall_transitions = [0.25, 0.5, 0.75]
+    wall_labels = ['Bottom→Right', 'Right→Top', 'Top→Left']
+    
+    for pos, label in zip(wall_transitions, wall_labels):
+        ax.axvline(pos, color='gray', linestyle='--', alpha=0.4, linewidth=1.5)
+        ax.text(pos, ax.get_ylim()[1] * 0.95, label, 
+                rotation=90, verticalalignment='top', fontsize=9, color='gray')
+    
+    ax.set_xlabel('Arc Length (0=bottom-left corner, CCW)', fontsize=12)
+    ax.set_ylabel('Mean Squared Error (Pa²)', fontsize=12)
+    ax.set_title('MSE Along Boundary Perimeter', fontsize=14, fontweight='bold')
+    ax.set_xlim([0, 1])
+    ax.set_yscale('log')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Plot 2: RMSE along boundary
+    ax = axes[1]
+    ax.plot(arc_centers, segment_rmse, 'o-', color='darkblue', linewidth=2, markersize=6, label='RMSE')
+    ax.plot(arc_centers, segment_mae, 's--', color='green', linewidth=1.5, markersize=4, alpha=0.7, label='MAE (reference)')
+    
+    # Annotate wall transitions
+    for pos, label in zip(wall_transitions, wall_labels):
+        ax.axvline(pos, color='gray', linestyle='--', alpha=0.4, linewidth=1.5)
+        ax.text(pos, ax.get_ylim()[1] * 0.95, label, 
+                rotation=90, verticalalignment='top', fontsize=9, color='gray')
+    
+    ax.set_xlabel('Arc Length (0=bottom-left corner, CCW)', fontsize=12)
+    ax.set_ylabel('Error (Pa)', fontsize=12)
+    ax.set_title('RMSE vs MAE Along Boundary Perimeter', fontsize=14, fontweight='bold')
+    ax.set_xlim([0, 1])
+    ax.set_yscale('log')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_along_boundary.png', dpi=150, bbox_inches='tight')
+    print(f"Saved: {output_dir / 'error_along_boundary.png'}")
+    plt.close()
+    
+    # Print key insights
+    print("\n" + "="*60)
+    print("ERROR ALONG BOUNDARY ANALYSIS")
+    print("="*60)
+    
+    # Find peak error locations
+    max_mse_idx = np.nanargmax(segment_mse)
+    max_rmse_idx = np.nanargmax(segment_rmse)
+    
+    print(f"\nPeak MSE location: Arc={arc_centers[max_mse_idx]:.3f}, MSE={segment_mse[max_mse_idx]:.6e} Pa²")
+    print(f"Peak RMSE location: Arc={arc_centers[max_rmse_idx]:.3f}, RMSE={segment_rmse[max_rmse_idx]:.6e} Pa")
+    
+    # Identify which wall has peak error
+    peak_arc = arc_centers[max_rmse_idx]
+    if peak_arc < 0.25:
+        wall = "Bottom wall"
+    elif peak_arc < 0.5:
+        wall = "Right wall"
+    elif peak_arc < 0.75:
+        wall = "Top wall (moving)"
+    else:
+        wall = "Left wall"
+    
+    print(f"Worst performance region: {wall}")
+    print("="*60)
+
+
+def analyze_by_reynolds_detailed(results, output_dir='results'):
+    """Detailed per-Reynolds-number performance breakdown."""  
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    # Get unique Reynolds numbers in test set
+    re_values = results['re_values']
+    unique_re = np.unique(re_values)
+    
+    abs_error_mag = np.abs(results['target_mag'] - results['pred_mag'])
+    
+    # Compute statistics for each Re
+    re_stats = []
+    for re in unique_re:
+        mask = re_values == re
+        if mask.sum() > 0:
+            re_stats.append({
+                'Re': int(re),
+                'count': int(mask.sum()),
+                'mae': float(abs_error_mag[mask].mean()),
+                'rmse': float(np.sqrt((abs_error_mag[mask]**2).mean())),
+                'r2': float(r2_score(results['target_mag'][mask], results['pred_mag'][mask])),
+                'median_error': float(np.median(abs_error_mag[mask])),
+            })
+    
+    # Convert to arrays for plotting
+    re_list = [s['Re'] for s in re_stats]
+    mae_list = [s['mae'] for s in re_stats]
+    
+    # Sort by MAE (worst to best)
+    sorted_stats = sorted(re_stats, key=lambda x: x['mae'], reverse=True)
+    
+    # Save detailed table
+    import csv
+    with open(output_dir / 'error_by_reynolds_table.csv', 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['Re', 'count', 'mae', 'rmse', 'r2', 'median_error'])
+        writer.writeheader()
+        writer.writerows(sorted_stats)
+    print(f"Saved: {output_dir / 'error_by_reynolds_table.csv'}")
+    
+    # Create visualization
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+    
+    # Bar chart: MAE by Re
+    ax = axes[0]
+    ax.bar(re_list, mae_list, alpha=0.7, color='steelblue', edgecolor='black', width=30)
+    ax.set_xlabel('Reynolds Number', fontsize=12)
+    ax.set_ylabel('Mean Absolute Error (Pa)', fontsize=12)
+    ax.set_title('MAE by Reynolds Number', fontsize=14, fontweight='bold')
+    ax.set_yscale('log')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Scatter: R² by Re
+    ax = axes[1]
+    r2_list = [s['r2'] for s in re_stats]
+    ax.scatter(re_list, r2_list, s=50, c='darkgreen', alpha=0.7, edgecolors='black')
+    ax.set_xlabel('Reynolds Number', fontsize=12)
+    ax.set_ylabel('R² Score', fontsize=12)
+    ax.set_title('R² Score by Reynolds Number', fontsize=14, fontweight='bold')
+    ax.set_ylim([0, 1.05])
+    ax.axhline(0.95, color='red', linestyle='--', alpha=0.5, label='0.95 threshold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(output_dir / 'error_by_reynolds_detailed.png', dpi=150, bbox_inches='tight')
+    print(f"Saved: {output_dir / 'error_by_reynolds_detailed.png'}")
+    plt.close()
+    
+    # Print worst/best performers
+    print("\n" + "="*60)
+    print("REYNOLDS NUMBER PERFORMANCE BREAKDOWN")
+    print("="*60)
+    print(f"\nTotal unique Re values in test set: {len(unique_re)}")
+    print(f"\nTop 5 WORST performers (highest MAE):")
+    for i, stats in enumerate(sorted_stats[:5], 1):
+        print(f"  {i}. Re={stats['Re']}: MAE={stats['mae']:.6e} Pa, R²={stats['r2']:.4f}")
+    print(f"\nTop 5 BEST performers (lowest MAE):")
+    for i, stats in enumerate(sorted_stats[-5:][::-1], 1):
+        print(f"  {i}. Re={stats['Re']}: MAE={stats['mae']:.6e} Pa, R²={stats['r2']:.4f}")
+    print("="*60)
+    
+    return re_stats
+
+
 def analyze_by_re_and_aspect(results, output_dir='results'):
     """Analyze error breakdown by Reynolds number and aspect ratio."""
     output_dir = Path(output_dir)
@@ -507,6 +878,13 @@ def main():
     plot_error_distribution(results, output_dir)
     analyze_by_re_and_aspect(results, output_dir)
     
+    # NEW: Spatial analysis
+    print("\nGenerating spatial analysis plots...")
+    wall_stats = analyze_by_wall_location(results, output_dir)
+    corner_stats = analyze_by_corner_proximity(results, output_dir)
+    analyze_by_arc_position(results, output_dir)
+    re_stats = analyze_by_reynolds_detailed(results, output_dir)
+    
     print("\n" + "="*60)
     print("EVALUATION COMPLETE!")
     print("="*60)
@@ -515,6 +893,11 @@ def main():
     print("  - predictions_vs_truth.png")
     print("  - error_distribution.png")
     print("  - error_by_re_and_aspect.png")
+    print("\nSpatial analysis results:")
+    print("  - error_by_wall.png & error_by_wall.json")
+    print("  - error_by_corner_distance.png")
+    print("  - error_along_boundary.png (MSE & RMSE analysis)")
+    print("  - error_by_reynolds_detailed.png & error_by_reynolds_table.csv")
 
 
 if __name__ == '__main__':
