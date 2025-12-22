@@ -138,7 +138,7 @@ class Config:
     fusion_type = "film"  # Options: "film" or "concat"
     
     # Regularization
-    dropout_rate = 0.1  # Dropout between GNN layers
+    dropout_rate = 0.0  # Dropout between GNN layers (0.0 = no dropout)
     
     # =========================================================================
     # TRAINING HYPERPARAMETERS
