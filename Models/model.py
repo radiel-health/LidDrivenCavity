@@ -185,13 +185,14 @@ class TaskHead(nn.Module):
     """
     
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
-                 num_layers=2, dropout=0.1, monte_carlo_sims=100):
+                 num_layers=2, dropout=0.1, monte_carlo_sims=100, output_range=False):
         super().__init__()
         
         self.num_layers = num_layers
         self.dropout = dropout
         assert monte_carlo_sims > 0
         self.monte_carlo_sims = monte_carlo_sims
+        self.output_range = output_range
         
         # GCN layers
         self.convs = nn.ModuleList([
@@ -248,9 +249,12 @@ class TaskHead(nn.Module):
         ## Final MLP prediction
         #y_pred = self.mlp(h)
         y_preds = [self.mlp(h) for _ in range(monte_carlo_sims)]
-        # get an interval from 2.5 to 97.5 percentile
         stacked_preds = torch.stack(y_preds)
-        return torch.quantile(stacked_preds, torch.tensor([0.025, 0.975]), dim=0)
+        if self.output_range:
+            # get an interval from 2.5 to 97.5 percentile
+            return torch.quantile(stacked_preds, torch.tensor([0.025, 0.975]), dim=0)
+        else:
+            return torch.mean(stacked_preds, dim=0) 
 
 class WSSPredictor(nn.Module):
     """
