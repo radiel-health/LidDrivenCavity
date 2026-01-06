@@ -19,6 +19,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data import Data, Batch
+import torchbnn as bnn
+from math import ceil
 
 
 class FlowEncoder(nn.Module):
@@ -183,11 +185,13 @@ class TaskHead(nn.Module):
     """
     
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
-                 num_layers=2, dropout=0.1):
+                 num_layers=2, dropout=0.1, monte_carlo_sims=100):
         super().__init__()
         
         self.num_layers = num_layers
         self.dropout = dropout
+        assert monte_carlo_sims > 0
+        self.monte_carlo_sims = monte_carlo_sims
         
         # GCN layers
         self.convs = nn.ModuleList([
@@ -202,12 +206,16 @@ class TaskHead(nn.Module):
         ])
         
         # MLP head for final prediction
+        # TODO: replace with custom class for BNN
         self.mlp = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            # nn.Linear(hidden_dim, hidden_dim // 2),
+            bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2)
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, output_dim)
+            # nn.Linear(hidden_dim // 2, output_dim)
+            bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim // 2, out_features=output_dim)
         )
+    
     
     def forward(self, h, edge_index):
         """
@@ -237,11 +245,12 @@ class TaskHead(nn.Module):
             if i > 0 and h.shape == h_in.shape:
                 h = h + h_in
         
-        # Final MLP prediction
-        y_pred = self.mlp(h)
-        
-        return y_pred
-
+        ## Final MLP prediction
+        #y_pred = self.mlp(h)
+        y_preds = [self.mlp(h) for _ in range(monte_carlo_sims)]
+        # get an interval from 2.5 to 97.5 percentile
+        stacked_preds = torch.stack(y_preds)
+        return torch.quantile(stacked_preds, torch.tensor([0.025, 0.975]), dim=0)
 
 class WSSPredictor(nn.Module):
     """

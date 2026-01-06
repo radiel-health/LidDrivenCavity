@@ -35,6 +35,10 @@ from tqdm import tqdm
 from config import config
 from dataset import WSSDataset, get_dataloaders
 from Models.model import WSSPredictor, count_parameters, get_model_summary
+import torchbnn as bnn
+
+kl_loss = bnn.BKLLoss(reduction='mean', last_layer_only=False)
+kl_weight = 0.1
 
 def create_model(device):
     """
@@ -150,7 +154,7 @@ def validate_epoch(model, loader, device):
         y_pred = model(batch)
         
         # Compute loss
-        loss = compute_loss(y_pred, batch.y)
+        loss = compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
         
         # Accumulate
         total_loss += loss.item() * batch.num_graphs
