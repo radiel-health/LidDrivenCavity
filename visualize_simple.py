@@ -88,7 +88,8 @@ def plot_single_case(data, pred_phys, true_phys, case_idx, output_dir):
     
     # Overall title
     mae = error_mag.mean()
-    fig.suptitle(f'Case {case_idx+1}: Re={re:.0f}, AR={ar:.2f}, MAE={mae:.2e} Pa',
+    wall_note = " (3 walls only)" if config.filter_top_wall else ""
+    fig.suptitle(f'Case {case_idx+1}: Re={re:.0f}, AR={ar:.2f}, MAE={mae:.2e} Pa{wall_note}',
                 fontsize=14, fontweight='bold')
     
     plt.tight_layout()

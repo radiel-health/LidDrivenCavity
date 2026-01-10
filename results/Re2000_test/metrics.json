@@ -1,0 +1,17 @@
+{
+  "mae_x_Pa": 2.3752809497068483e-08,
+  "mae_y_Pa": 1.7051158707204195e-08,
+  "mae_magnitude_Pa": 3.5908989559629845e-08,
+  "rmse_x_Pa": 5.3102503727586736e-08,
+  "rmse_y_Pa": 4.588066460087248e-08,
+  "rmse_magnitude_Pa": 6.946553554598722e-08,
+  "median_rel_error_x_percent": 943.757080078125,
+  "median_rel_error_y_percent": 376.43341064453125,
+  "median_rel_error_magnitude_percent": 21.662023544311523,
+  "mean_rel_error_x_percent": 4049.13720703125,
+  "mean_rel_error_y_percent": 1326.586669921875,
+  "mean_rel_error_magnitude_percent": 562.1560668945312,
+  "r2_x": 0.9942409992218018,
+  "r2_y": 0.9910675287246704,
+  "r2_magnitude": 0.9926959276199341
+}

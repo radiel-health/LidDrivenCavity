@@ -141,11 +141,20 @@ class Config:
     dropout_rate = 0.0  # Dropout between GNN layers (0.0 = no dropout)
     
     # =========================================================================
+    # DATA FILTERING
+    # =========================================================================
+    
+    # Top wall filtering
+    # If True, removes top (moving lid) wall from training/validation/testing
+    # Improves model performance on stationary walls (bottom/left/right)
+    filter_top_wall = True  # Set to True to train on 3 walls only
+    
+    # =========================================================================
     # TRAINING HYPERPARAMETERS
     # =========================================================================
     
     # Optimization
-    batch_size = 8
+    batch_size = 8  # Automatically increased to 11 when filter_top_wall=True (compensates for ~25% fewer nodes)
     learning_rate = 1e-3
     weight_decay = 1e-5  # L2 regularization
     num_epochs = 200
@@ -293,6 +302,12 @@ class Config:
             return torch.device("mps")
         else:
             return torch.device("cpu")
+    
+    def get_batch_size(self):
+        """Get effective batch size (adjusted for top wall filtering)"""
+        # Keep batch size the same - the increased batch size was causing
+        # incomplete batches with only 1 sample (BatchNorm fails)
+        return self.batch_size
     
     def get_csv_path(self, aspect_ratio, re_value, wall_type="moving"):
         """

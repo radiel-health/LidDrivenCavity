@@ -44,8 +44,13 @@ def load_model(checkpoint_path, device):
     return model
 
 
-def load_normalization_stats(stats_path='ProcessedData/normalization_stats.json'):
+def load_normalization_stats(filter_top_wall=False):
     """Load normalization statistics."""
+    if filter_top_wall:
+        stats_path = 'ProcessedData/normalization_stats_no_top.json'
+    else:
+        stats_path = 'ProcessedData/normalization_stats.json'
+    
     with open(stats_path, 'r') as f:
         stats = json.load(f)
     return stats
@@ -76,8 +81,26 @@ def denormalize_wss(wss_normalized, norm_stats):
     return wss_x, wss_y
 
 
-def run_inference(model, graph_data, norm_stats, device):
+def run_inference(model, graph_data, norm_stats, device, filter_top_wall=False):
     """Run model inference on a single graph."""
+    # Apply top wall filtering if enabled
+    if filter_top_wall:
+        on_top = graph_data.x[:, 2].bool()  # Feature index 2 is 'on_top' flag
+        keep_mask = ~on_top
+        
+        # Apply mask to node features, targets, and positions
+        graph_data.x = graph_data.x[keep_mask]
+        if hasattr(graph_data, 'y') and graph_data.y is not None:
+            graph_data.y = graph_data.y[keep_mask]
+        graph_data.pos = graph_data.pos[keep_mask]
+        
+        # Filter and remap edges
+        from dataset import filter_edge_index
+        graph_data.edge_index = filter_edge_index(graph_data.edge_index, keep_mask)
+        
+        # Update node count
+        graph_data.num_nodes = keep_mask.sum().item()
+    
     # Add batch attribute for single graph (all nodes belong to graph 0)
     graph_data.batch = torch.zeros(graph_data.num_nodes, dtype=torch.long)
     
@@ -101,8 +124,14 @@ def run_inference(model, graph_data, norm_stats, device):
     # Extract coordinates
     coords = graph_data.pos.cpu().numpy()
     
-    # Extract wall labels
+    # Extract wall labels (indices 2-5: top, bottom, left, right)
     wall_labels = graph_data.x[:, 2:6].cpu().numpy()  # [top, bottom, left, right]
+    
+    # Identify which walls are present
+    if filter_top_wall:
+        walls_present = "3 walls (bottom/left/right)"
+    else:
+        walls_present = "4 walls (top/bottom/left/right)"
     
     results = {
         'coordinates': coords,
@@ -112,10 +141,11 @@ def run_inference(model, graph_data, norm_stats, device):
         'wall_labels': wall_labels,
         're': int(graph_data.re[0]),
         'lx': float(graph_data.lx[0]),
-        'ly': float(graph_data.ly[0])
+        'ly': float(graph_data.ly[0]),
+        'filter_top_wall': filter_top_wall
     }
     
-    print(f"\n[OK] Inference complete for Re={int(graph_data.re[0])}, AR={graph_data.lx[0]/graph_data.ly[0]:.2f}")
+    print(f"\n[OK] Inference complete for Re={int(graph_data.re[0])}, AR={graph_data.lx[0]/graph_data.ly[0]:.2f} ({walls_present})")
     print(f"  WSS_x range: [{wss_x.min():.6e}, {wss_x.max():.6e}] Pa")
     print(f"  WSS_y range: [{wss_y.min():.6e}, {wss_y.max():.6e}] Pa")
     print(f"  Magnitude range: [{wss_mag.min():.6e}, {wss_mag.max():.6e}] Pa")
@@ -216,11 +246,15 @@ def main():
     print(f"Device: {device}")
     print(f"Reynolds: {args.re}")
     print(f"Aspect Ratio: {args.ar}")
+    if config.filter_top_wall:
+        print(f"⚠ Top wall filtering: ENABLED (3 walls only)")
+    else:
+        print(f"Top wall filtering: DISABLED (4 walls)")
     print("="*70)
     
     # Load model
     model = load_model(args.model, device)
-    norm_stats = load_normalization_stats()
+    norm_stats = load_normalization_stats(filter_top_wall=config.filter_top_wall)
     
     # Load preprocessed graph
     graph_path = config.processed_data_dir / args.ar / f'Re{args.re}.pt'
@@ -238,7 +272,7 @@ def main():
     print(f"[OK] Loaded graph: {graph_data.num_nodes} nodes, {graph_data.num_edges} edges")
     
     # Run inference
-    results = run_inference(model, graph_data, norm_stats, device)
+    results = run_inference(model, graph_data, norm_stats, device, filter_top_wall=config.filter_top_wall)
     
     # Save results
     save_results(results, args.output)

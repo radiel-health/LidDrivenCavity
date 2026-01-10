@@ -210,7 +210,7 @@ class TaskHead(nn.Module):
         # TODO: replace with custom class for BNN
         self.mlp = nn.Sequential(
             # nn.Linear(hidden_dim, hidden_dim // 2),
-            bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2)
+            bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
             # nn.Linear(hidden_dim // 2, output_dim)
@@ -248,7 +248,7 @@ class TaskHead(nn.Module):
         
         ## Final MLP prediction
         #y_pred = self.mlp(h)
-        y_preds = [self.mlp(h) for _ in range(monte_carlo_sims)]
+        y_preds = [self.mlp(h) for _ in range(self.monte_carlo_sims)]
         stacked_preds = torch.stack(y_preds)
         if self.output_range:
             # get an interval from 2.5 to 97.5 percentile

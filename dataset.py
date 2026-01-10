@@ -18,6 +18,36 @@ from torch_geometric.loader import DataLoader
 import json
 from config import Config
 
+def filter_edge_index(edge_index: torch.Tensor, keep_mask: torch.Tensor) -> torch.Tensor:
+    """Filter edges and remap node indices after removing nodes.
+    
+    When nodes are removed from a graph, edges must be updated:
+    1. Remove edges that connect to deleted nodes
+    2. Remap remaining node indices to be contiguous (0, 1, 2, ...)
+    
+    Args:
+        edge_index: [2, num_edges] edge connectivity tensor
+        keep_mask: [num_nodes] boolean mask indicating which nodes to keep
+        
+    Returns:
+        Filtered and remapped edge_index tensor
+        
+    Example:
+        Original: nodes=[0,1,2,3,4], edges=[[0,1,2,3],[1,2,3,4]]
+        Remove node 2: keep_mask=[T,T,F,T,T]
+        Result: nodes=[0,1,2,3], edges=[[0,1,2],[1,2,3]] (indices remapped)
+    """
+    # Step 1: Keep only edges where both endpoints are in the keep_mask
+    valid_edges = keep_mask[edge_index[0]] & keep_mask[edge_index[1]]
+    edge_index_filtered = edge_index[:, valid_edges]
+    
+    # Step 2: Remap node indices to be contiguous
+    # Create mapping from old indices to new indices
+    # Example: keep_mask=[T,T,F,T,T] -> old_to_new=[0,1,-1,2,3]
+    old_to_new = torch.cumsum(keep_mask.long(), dim=0) - 1
+    edge_index_remapped = old_to_new[edge_index_filtered]
+    
+    return edge_index_remapped
 class WSSDataset(Dataset):
     """
     Dataset for loading preprocessed wall shear stress graphs
@@ -37,6 +67,7 @@ class WSSDataset(Dataset):
         normalize_features: bool = False,
         split_ratios: Tuple[float, float, float] = (0.7, 0.15, 0.15),
         seed: int = 42,
+        filter_top_wall: bool = False,
     ):
         """
         Initialize dataset
@@ -47,12 +78,14 @@ class WSSDataset(Dataset):
             normalize: Whether to normalize features and targets
             split_ratios: (train, val, test) split ratios, must sum to 1.0
             seed: Random seed for reproducible splits
+            filter_top_wall: If True, removes top (moving lid) wall nodes from graphs
         """
         self.split = split
         self.normalize = normalize
         self.normalize_features = normalize_features
         self.split_ratios = split_ratios
         self.seed = seed
+        self.filter_top_wall = filter_top_wall
         
         # Get root directory
         if root is None:
@@ -62,6 +95,9 @@ class WSSDataset(Dataset):
             root = Path(root)
         
         self.data_dir = root / "ProcessedData"
+        
+        # OPTION 4: Use baseline (4-wall) normalization stats for consistency
+        # Even when filtering top wall, use 4-wall stats for fair comparison
         self.stats_file = self.data_dir / "normalization_stats.json"
         
         # Validate
@@ -168,8 +204,17 @@ class WSSDataset(Dataset):
         
         for file_path in self.files:
             data = torch.load(file_path, weights_only=False)
-            all_features.append(data.x)
-            all_targets.append(data.y)
+            
+            # Filter top wall if enabled
+            if self.filter_top_wall:
+                on_top = data.x[:, 2].bool()  # Feature index 2 is 'on_top' flag
+                keep_mask = ~on_top
+                all_features.append(data.x[keep_mask])
+                all_targets.append(data.y[keep_mask])
+            else:
+                all_features.append(data.x)
+                all_targets.append(data.y)
+            
             all_flow_params.append(data.flow_params.unsqueeze(0))
         
         # Concatenate
@@ -235,6 +280,22 @@ class WSSDataset(Dataset):
         """
         # Load graph
         data = torch.load(self.files[idx], weights_only=False)
+        
+        # Filter top wall nodes if enabled
+        if self.filter_top_wall:
+            on_top = data.x[:, 2].bool()  # Feature index 2 is 'on_top' flag
+            keep_mask = ~on_top  # Keep all nodes except top wall
+            
+            # Apply mask to node features, targets, and positions
+            data.x = data.x[keep_mask]
+            data.y = data.y[keep_mask]
+            data.pos = data.pos[keep_mask]
+            
+            # Filter and remap edges
+            data.edge_index = filter_edge_index(data.edge_index, keep_mask)
+            
+            # Update node count
+            data.num_nodes = keep_mask.sum().item()
 
         if self.normalize_features:
             # normalizing the node features
@@ -287,6 +348,7 @@ def get_dataloaders(
     seed: int = 42,
     normalize: bool = True,
     normalize_features: bool = False,
+    filter_top_wall: bool = False,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Convenience function to get train/val/test dataloaders
@@ -297,17 +359,18 @@ def get_dataloaders(
         split_ratios: (train, val, test) split ratios
         seed: Random seed for splits
         normalize: Whether to normalize data
+        filter_top_wall: If True, removes top wall nodes from all graphs
         
     Returns:
         (train_loader, val_loader, test_loader)
     """
     # Create datasets
     train_dataset = WSSDataset(split='train', normalize=normalize, normalize_features=normalize_features, 
-                               split_ratios=split_ratios, seed=seed)
+                               split_ratios=split_ratios, seed=seed, filter_top_wall=filter_top_wall)
     val_dataset = WSSDataset(split='val', normalize=normalize, normalize_features=normalize_features, 
-                             split_ratios=split_ratios, seed=seed)
+                             split_ratios=split_ratios, seed=seed, filter_top_wall=filter_top_wall)
     test_dataset = WSSDataset(split='test', normalize=normalize, normalize_features=normalize_features, 
-                              split_ratios=split_ratios, seed=seed)
+                              split_ratios=split_ratios, seed=seed, filter_top_wall=filter_top_wall)
     
     # Create dataloaders
     train_loader = DataLoader(

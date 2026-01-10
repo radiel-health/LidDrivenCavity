@@ -1,0 +1,13 @@
+{
+  "mae_x_Pa": 3.0023818453628337e-07,
+  "mae_y_Pa": 1.6017891368846904e-07,
+  "mae_magnitude_Pa": 3.3850528780021705e-07,
+  "rmse_x_Pa": 3.1364373729413404e-07,
+  "rmse_y_Pa": 1.697658038813098e-07,
+  "rmse_magnitude_Pa": 3.51596918208363e-07,
+  "r2_x": -19.61688232421875,
+  "r2_y": -12.379222869873047,
+  "r2_magnitude": -18.419477462768555,
+  "median_rel_error_magnitude_percent": 7892.2548828125,
+  "mean_rel_error_magnitude_percent": 357694.75
+}
