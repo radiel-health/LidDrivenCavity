@@ -395,12 +395,12 @@ def analyze_by_wall_location(results, output_dir='results'):
     abs_error_y = np.abs(results['targets_phys'][:, 1] - results['preds_phys'][:, 1])
     
     # Wall statistics
-    walls = {}
-    if not config.filter_top_wall:
-        walls['Top (Moving)'] = on_top
-    walls['Bottom'] = on_bottom
-    walls['Left'] = on_left
-    walls['Right'] = on_right
+    walls = {
+        'Top (Moving)': on_top,
+        'Bottom': on_bottom,
+        'Left': on_left,
+        'Right': on_right
+    }
     
     wall_stats = {}
     for wall_name, wall_mask in walls.items():
@@ -841,23 +841,15 @@ def main():
     print("EVALUATING TRAINED WSS PREDICTION MODEL")
     print("="*60)
     
-    # OPTION 4: Always use baseline (4-wall) normalization stats
+    # Load normalization stats
     stats_path = Path(config.processed_data_dir) / 'normalization_stats.json'
-    
-    if config.filter_top_wall:
-        print(f"\n⚠ Top wall filtering ENABLED - evaluating on 3 walls only")
-        print(f"⚠ Using baseline (4-wall) normalization for consistency")
-    
     with open(stats_path, 'r') as f:
         stats = json.load(f)
-    print(f"Loaded normalization stats from: {stats_path}")
+    print(f"\nLoaded normalization stats from: {stats_path}")
     
     # Load test data
     print("\nLoading test data...")
-    train_loader, val_loader, test_loader = get_dataloaders(
-        batch_size=config.batch_size,
-        filter_top_wall=config.filter_top_wall
-    )
+    train_loader, val_loader, test_loader = get_dataloaders(batch_size=config.batch_size)
     print(f"Test set: {len(test_loader.dataset)} graphs, {len(test_loader)} batches")
     
     # Load trained model

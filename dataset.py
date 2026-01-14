@@ -96,9 +96,11 @@ class WSSDataset(Dataset):
         
         self.data_dir = root / "ProcessedData"
         
-        # OPTION 4: Use baseline (4-wall) normalization stats for consistency
-        # Even when filtering top wall, use 4-wall stats for fair comparison
-        self.stats_file = self.data_dir / "normalization_stats.json"
+        # Use separate stats file for filtered data
+        if self.filter_top_wall:
+            self.stats_file = self.data_dir / "normalization_stats_no_top.json"
+        else:
+            self.stats_file = self.data_dir / "normalization_stats.json"
         
         # Validate
         assert split in ['train', 'val', 'test'], f"Invalid split: {split}"
