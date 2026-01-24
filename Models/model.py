@@ -17,7 +17,7 @@ Key design choices:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GATConv
+from torch_geometric.nn import GCNConv, GATConv, GPSConv
 from torch_geometric.data import Data, Batch
 import torchbnn as bnn
 from math import ceil
@@ -183,10 +183,11 @@ class FiLMLayer(nn.Module):
 
 class TaskHead(nn.Module):
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
-                 num_layers=5, dropout=0.3, monte_carlo_sims=100, output_range=False, heads=2):
+                 num_layers=5, dropout=0.3, monte_carlo_sims=100, 
+                 output_range=False, heads=2):
         super().__init__()
         
-        # Ensure dimensionality consistency
+        # Ensure dimensionality consistency for multi-head attention
         if hidden_dim % heads != 0:
             raise ValueError(f"hidden_dim ({hidden_dim}) must be divisible by heads ({heads})")
         
@@ -196,51 +197,69 @@ class TaskHead(nn.Module):
         self.monte_carlo_sims = monte_carlo_sims
         self.output_range = output_range
         
-        head_dim = hidden_dim // heads
+        # NEW: Initial projection to align FiLM output (input_dim) 
+        # with the internal GPS processing dimension (hidden_dim)
+        self.feature_align = nn.Linear(input_dim, hidden_dim)
         
-        # GAT layers
+        # GPS layers
         self.convs = nn.ModuleList()
         for i in range(num_layers):
-            # First layer transitions from input_dim -> hidden_dim
-            # Subsequent layers stay at hidden_dim
-            layer_in = input_dim if i == 0 else hidden_dim
-            
-            self.convs.append(GATConv(
-                in_channels=layer_in,
-                out_channels=head_dim, 
+            # All layers now operate at hidden_dim (128)
+            # This allows GPSConv internal residuals (h = h + x) to match shapes
+            local_conv = GATConv(
+                in_channels=hidden_dim,
+                out_channels=hidden_dim // heads, 
                 heads=heads,
                 concat=True,
                 dropout=dropout
+            )
+            
+            self.convs.append(GPSConv(
+                channels=hidden_dim,
+                conv=local_conv,
+                heads=heads,
+                dropout=dropout,
+                attn_type='multihead' 
             ))
         
-        # Layer norms (stay the same size because concat=True)
+        # Layer norms 
         self.norms = nn.ModuleList([
             nn.LayerNorm(hidden_dim)
             for _ in range(num_layers)
         ])
         
-        # MLP head for final prediction (remains the same)
+        # MLP head for final prediction
         self.mlp = nn.Sequential(
             nn.Linear(in_features=hidden_dim, out_features=hidden_dim // 2),
-            # bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
             bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim // 2, out_features=output_dim)
         )
 
-    def forward(self, h, edge_index):
+    def forward(self, h, edge_index, batch):
+        """
+        Args:
+            h: Node features from FiLM layer [num_nodes, 64]
+            edge_index: Ring topology edges
+            batch: Batch assignment vector
+        """
+        # 1. Project input to hidden_dim (64 -> 128)
+        # This prevents the "Size mismatch" RuntimeError in GPSConv
+        h = self.feature_align(h)
+        
         for i in range(self.num_layers):
             h_in = h
             
-            h = self.convs[i](h, edge_index)
+            # GPSConv performs internal local + global message passing
+            h = self.convs[i](h, edge_index, batch)
             h = self.norms[i](h)
             h = F.relu(h)
             
             if self.training:
                 h = F.dropout(h, p=self.dropout)
             
-            # Residual connection: only if shapes match
-            if i > 0 and h.shape == h_in.shape:
+            # Residual connection (now shapes match at 128)
+            if i > 0:
                 h = h + h_in
         
         # Monte Carlo sampling via Bayesian MLP
@@ -354,7 +373,7 @@ class WSSPredictor(nn.Module):
         h_fused = self.film(h_geom, context, batch)  # [num_nodes, hidden_dim]
         
         # 4. Predict WSS
-        y_pred = self.task_head(h_fused, edge_index)  # [num_nodes, 2]
+        y_pred = self.task_head(h_fused, edge_index, batch)  # [num_nodes, 2]
         
         return y_pred
     
