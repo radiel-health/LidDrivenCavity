@@ -38,7 +38,7 @@ from Models.model import WSSPredictor, count_parameters, get_model_summary
 import torchbnn as bnn
 
 kl_loss = bnn.BKLLoss(reduction='mean', last_layer_only=False)
-kl_weight = 0.1
+kl_weight = 0.05
 
 def create_model(device):
     """
