@@ -157,7 +157,7 @@ class Config:
     batch_size = 8  # Automatically increased to 11 when filter_top_wall=True (compensates for ~25% fewer nodes)
     learning_rate = 1e-3
     weight_decay = 1e-5  # L2 regularization
-    num_epochs = 200
+    num_epochs = 500
     
     # Learning rate scheduler
     use_scheduler = True
@@ -168,7 +168,7 @@ class Config:
     
     # Early stopping
     use_early_stopping = True
-    early_stop_patience = 20  # Epochs with no improvement before stopping
+    early_stop_patience = 50  # Epochs with no improvement before stopping
     
     # Gradient clipping (prevents exploding gradients)
     use_grad_clip = True

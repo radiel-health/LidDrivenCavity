@@ -70,22 +70,36 @@ class GeometryEncoder(nn.Module):
         dropout: Dropout rate
     """
     
-    def __init__(self, input_dim=10, hidden_dim=64, num_layers=3, dropout=0.1):
+    def __init__(self, input_dim=10, hidden_dim=64, num_layers=3, dropout=0.1, heads=4):
         super().__init__()
+        
+        # Ensure hidden_dim is divisible by heads to maintain consistent dimensions
+        if hidden_dim % heads != 0:
+            raise ValueError(f"hidden_dim ({hidden_dim}) must be divisible by heads ({heads})")
         
         self.num_layers = num_layers
         self.dropout = dropout
+        self.heads = heads
+        # Calculate the dimension per head
+        head_dim = hidden_dim // heads 
         
         # Input projection
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         
-        # GCN layers
+        # GCN layers (GAT with multi-head attention)
         self.convs = nn.ModuleList([
-            GCNConv(hidden_dim, hidden_dim)
+            GATConv(
+                in_channels=hidden_dim, 
+                out_channels=head_dim, # Output of each head
+                heads=heads,           # Number of attention heads
+                concat=True,           # Concat heads to get back to hidden_dim
+                dropout=dropout
+            )
             for _ in range(num_layers)
         ])
         
-        # Layer normalization for each layer
+        # Layer normalization stays the same because concat=True 
+        # brings the total output back to hidden_dim
         self.norms = nn.ModuleList([
             nn.LayerNorm(hidden_dim)
             for _ in range(num_layers)
@@ -169,11 +183,7 @@ class FiLMLayer(nn.Module):
 
 class TaskHead(nn.Module):
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
-<<<<<<< Updated upstream
-                 num_layers=2, dropout=0.2, monte_carlo_sims=100, output_range=False):
-=======
-                 num_layers=2, dropout=0.1, monte_carlo_sims=100, output_range=False, heads=4):
->>>>>>> Stashed changes
+                 num_layers=5, dropout=0.3, monte_carlo_sims=100, output_range=False, heads=2):
         super().__init__()
         
         # Ensure dimensionality consistency
@@ -211,7 +221,8 @@ class TaskHead(nn.Module):
         
         # MLP head for final prediction (remains the same)
         self.mlp = nn.Sequential(
-            bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2),
+            nn.Linear(in_features=hidden_dim, out_features=hidden_dim // 2),
+            # bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
             bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim // 2, out_features=output_dim)
