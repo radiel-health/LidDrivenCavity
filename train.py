@@ -38,7 +38,7 @@ from Models.model import WSSPredictor, count_parameters, get_model_summary
 import torchbnn as bnn
 
 kl_loss = bnn.BKLLoss(reduction='mean', last_layer_only=False)
-kl_weight = 0.05
+kl_weight = 0.025
 
 def create_model(device):
     """
@@ -111,7 +111,7 @@ def train_epoch(model, loader, optimizer, device, grad_clip=None):
         y_pred = model(batch)
         
         # Compute loss
-        loss = compute_loss(y_pred, batch.y)
+        loss = (1-kl_weight)*compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
         
         # Backward pass
         optimizer.zero_grad()
@@ -154,7 +154,7 @@ def validate_epoch(model, loader, device):
         y_pred = model(batch)
         
         # Compute loss
-        loss = (1-kl_weight)*compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
+        loss = compute_loss(y_pred, batch.y)
         
         # Accumulate
         total_loss += loss.item() * batch.num_graphs
