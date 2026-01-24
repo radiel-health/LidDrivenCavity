@@ -185,7 +185,7 @@ class TaskHead(nn.Module):
     """
     
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
-                 num_layers=2, dropout=0.1, monte_carlo_sims=100, output_range=False):
+                 num_layers=2, dropout=0.2, monte_carlo_sims=100, output_range=False):
         super().__init__()
         
         self.num_layers = num_layers

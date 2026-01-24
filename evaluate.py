@@ -849,7 +849,10 @@ def main():
     
     # Load test data
     print("\nLoading test data...")
-    train_loader, val_loader, test_loader = get_dataloaders(batch_size=config.batch_size)
+    train_loader, val_loader, test_loader = get_dataloaders(
+    batch_size=config.batch_size,
+    filter_top_wall=config.filter_top_wall  # or filter_top_wall=True
+    )  
     print(f"Test set: {len(test_loader.dataset)} graphs, {len(test_loader)} batches")
     
     # Load trained model
