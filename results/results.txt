@@ -1,0 +1,165 @@
+============================================================
+EVALUATING TRAINED WSS PREDICTION MODEL
+============================================================
+
+Loaded 3-wall normalization stats from: C:\Repositories\LidDrivenHolder\LidDrivenCavity\ProcessedData\normalization_stats_no_top.json
+
+Loading test data...
+Top wall filtering: ENABLED (evaluating on 3 stationary walls only)
+
+Found 190 preprocessed graphs
+
+Split: train
+  Total graphs: 131
+  1x1: 44
+  1x2: 43
+  2x1: 44
+
+Loaded normalization stats from C:\Repositories\LidDrivenHolder\LidDrivenCavity\ProcessedData\normalization_stats_no_top.json
+
+Found 190 preprocessed graphs
+
+Split: val
+  Total graphs: 27
+  1x1: 9
+  1x2: 9
+  2x1: 9
+
+Loaded normalization stats from C:\Repositories\LidDrivenHolder\LidDrivenCavity\ProcessedData\normalization_stats_no_top.json
+
+Found 190 preprocessed graphs
+
+Split: test
+  Total graphs: 32
+  1x1: 11
+  1x2: 10
+  2x1: 11
+
+Loaded normalization stats from C:\Repositories\LidDrivenHolder\LidDrivenCavity\ProcessedData\normalization_stats_no_top.json
+Test set: 32 graphs, 4 batches
+
+Loading trained model...
+Loaded model from epoch 75
+Best validation loss: 0.090606
+
+Running evaluation on test set...
+
+============================================================
+TEST SET EVALUATION RESULTS
+============================================================
+
+Normalized Loss (MSE in log-space):
+  Test Loss: 0.066076
+
+Physical Units - Mean Absolute Error (MAE):
+  WSS_x:      1.604038e-09 Pa
+  WSS_y:      5.284665e-08 Pa
+  Magnitude:  4.899947e-08 Pa
+
+Physical Units - Root Mean Squared Error (RMSE):
+  WSS_x:      3.169210e-09 Pa
+  WSS_y:      1.332369e-07 Pa
+  Magnitude:  1.322090e-07 Pa
+
+R² Score (Coefficient of Determination):
+  WSS_x:      0.980750
+  WSS_y:      0.892788
+  Magnitude:  0.887992
+
+Relative Error (filtered for |true| > 1e-12 Pa):
+  WSS_x median:      57.12%
+  WSS_y median:      219.81%
+  Magnitude median:  273.61%
+  WSS_x mean:        1936.91%
+  WSS_y mean:        23567.14%
+  Magnitude mean:    34344.87%
+
+============================================================
+
+Saved metrics to: results\test_metrics.json
+
+Generating visualization plots...
+Saved: results\predictions_vs_truth.png
+Saved: results\error_distribution.png
+C:\Repositories\LidDrivenHolder\LidDrivenCavity\evaluate.py:797: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  bp = ax.boxplot(error_by_aspect, labels=aspect_labels, patch_artist=True)
+Saved: results\error_by_re_and_aspect.png
+
+Generating spatial analysis plots...
+C:\Repositories\LidDrivenHolder\LidDrivenCavity\evaluate.py:444: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+  bp = ax.boxplot(error_data, labels=wall_names, patch_artist=True)
+Saved: results\error_by_wall.png
+Saved: results\error_by_wall.json
+
+============================================================
+ERROR BREAKDOWN BY WALL LOCATION
+============================================================
+
+Bottom:
+  Nodes: 2373
+  MAE (magnitude): 2.451714e-08 Pa
+  RMSE (magnitude): 3.006674e-08 Pa
+  R² (magnitude): 0.368491
+
+Left:
+  Nodes: 2436
+  MAE (magnitude): 4.731622e-08 Pa
+  RMSE (magnitude): 1.428410e-07 Pa
+  R² (magnitude): 0.884615
+
+Right:
+  Nodes: 2436
+  MAE (magnitude): 7.453186e-08 Pa
+  RMSE (magnitude): 1.752182e-07 Pa
+  R² (magnitude): 0.886559
+============================================================
+Saved: results\error_by_corner_distance.png
+Saved: results\error_along_boundary.png
+
+============================================================
+ERROR ALONG BOUNDARY ANALYSIS
+============================================================
+
+Peak MSE location: Arc=0.475, MSE=1.387608e-13 Pa²
+Peak RMSE location: Arc=0.475, RMSE=3.725061e-07 Pa
+Worst performance region: Right wall
+============================================================
+Saved: results\error_by_reynolds_table.csv
+Saved: results\error_by_reynolds_detailed.png
+
+============================================================
+REYNOLDS NUMBER PERFORMANCE BREAKDOWN
+============================================================
+
+Total unique Re values in test set: 28
+
+Top 5 WORST performers (highest MAE):
+  1. Re=3100: MAE=9.793949e-08 Pa, R²=0.6414
+  2. Re=2950: MAE=8.926732e-08 Pa, R²=0.6655
+  3. Re=2900: MAE=7.933463e-08 Pa, R²=0.9083
+  4. Re=2750: MAE=7.855792e-08 Pa, R²=0.6965
+  5. Re=1900: MAE=6.928168e-08 Pa, R²=0.8964
+
+Top 5 BEST performers (lowest MAE):
+  1. Re=700: MAE=2.699393e-08 Pa, R²=0.6237
+  2. Re=350: MAE=2.888438e-08 Pa, R²=0.6581
+  3. Re=1050: MAE=3.195105e-08 Pa, R²=0.4776
+  4. Re=1150: MAE=3.230185e-08 Pa, R²=0.5249
+  5. Re=1250: MAE=3.260805e-08 Pa, R²=0.5554
+============================================================
+
+============================================================
+EVALUATION COMPLETE!
+============================================================
+
+Results saved to: results/
+  - test_metrics.json
+  - predictions_vs_truth.png
+  - error_distribution.png
+  - error_by_re_and_aspect.png
+
+Spatial analysis results:
+  - error_by_wall.png & error_by_wall.json
+  - error_by_corner_distance.png
+  - error_along_boundary.png (MSE & RMSE analysis)
+  - error_by_reynolds_detailed.png & error_by_reynolds_table.csv

@@ -146,8 +146,8 @@ class Config:
     
     # Top wall filtering
     # If True, removes top (moving lid) wall from training/validation/testing
-    # Improves model performance on stationary walls (bottom/left/right)
-    filter_top_wall = True  # Set to True to train on 3 walls only
+    # If False, keeps all 4 walls but loss is masked to only stationary walls
+    filter_top_wall = True  # Set to False to train on 4 walls with masked loss
     
     # =========================================================================
     # TRAINING HYPERPARAMETERS

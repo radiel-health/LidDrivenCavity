@@ -51,7 +51,6 @@ def parse_ar_string(ar_str):
     lx, ly = float(parts[0]), float(parts[1])
     return (lx, ly)
 
-
 def normalize_graph(graph, norm_stats):
     """Apply dataset normalization to a graph (mimics WSSDataset.__getitem__())."""
     # Load normalization stats as tensors

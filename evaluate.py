@@ -57,8 +57,11 @@ def denormalize_wss(wss_normalized, stats):
         wss_normalized = torch.from_numpy(wss_normalized).float()
     
     # Reverse normalization: denormalized_log = normalized * std + mean
-    sign = torch.sign(wss_normalized)
-    log_mag = wss_normalized.abs() * target_std + target_mean
+    signed_log = wss_normalized * target_std + target_mean
+    
+    # Extract sign from denormalized space (critical: mean-centering causes sign flips)
+    sign = torch.sign(signed_log)
+    log_mag = torch.abs(signed_log)
     
     # Reverse log1p transform: mag = exp(log) - 1
     mag = torch.expm1(log_mag)
@@ -95,7 +98,7 @@ def evaluate_model(model, test_loader, stats):
             # Forward pass
             pred = model(batch)
             
-            # Compute loss in normalized space
+            # Compute loss in normalized space (all 4 walls)
             loss = torch.nn.functional.mse_loss(pred, batch.y)
             test_loss += loss.item()
             
@@ -841,15 +844,19 @@ def main():
     print("EVALUATING TRAINED WSS PREDICTION MODEL")
     print("="*60)
     
-    # Load normalization stats
-    stats_path = Path(config.processed_data_dir) / 'normalization_stats.json'
+    # Load normalization stats (3-wall version)
+    stats_path = Path(config.processed_data_dir) / 'normalization_stats_no_top.json'
     with open(stats_path, 'r') as f:
         stats = json.load(f)
-    print(f"\nLoaded normalization stats from: {stats_path}")
+    print(f"\nLoaded 3-wall normalization stats from: {stats_path}")
     
-    # Load test data
+    # Load test data (3 stationary walls only)
     print("\nLoading test data...")
-    train_loader, val_loader, test_loader = get_dataloaders(batch_size=config.batch_size)
+    print(f"Top wall filtering: ENABLED (evaluating on 3 stationary walls only)")
+    train_loader, val_loader, test_loader = get_dataloaders(
+        batch_size=config.batch_size,
+        filter_top_wall=True  # Remove top wall
+    )
     print(f"Test set: {len(test_loader.dataset)} graphs, {len(test_loader)} batches")
     
     # Load trained model

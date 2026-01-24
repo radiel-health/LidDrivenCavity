@@ -17,7 +17,7 @@ Key design choices:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.data import Data, Batch
 import torchbnn as bnn
 from math import ceil
@@ -81,9 +81,10 @@ class GeometryEncoder(nn.Module):
         
         # GCN layers
         self.convs = nn.ModuleList([
-            GCNConv(hidden_dim, hidden_dim)
+            GATConv(hidden_dim, hidden_dim)
             for _ in range(num_layers)
         ])
+        
         
         # Layer normalization for each layer
         self.norms = nn.ModuleList([

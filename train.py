@@ -64,9 +64,9 @@ def create_model(device):
     
     return model.to(device)
 
-def compute_loss(y_pred, y_true, reduction='mean'):
+def compute_loss(y_pred, y_true, node_features=None, reduction='mean', mask_top_wall=True):
     """
-    Compute MSE loss on log-normalized WSS.
+    Compute MSE loss in log-normalized space with optional top wall masking.
     
     The WSS values span 7 orders of magnitude (1e-14 to 1e-5), so we use
     log1p normalization before computing MSE.
@@ -74,14 +74,24 @@ def compute_loss(y_pred, y_true, reduction='mean'):
     Args:
         y_pred: [num_nodes, 2] predicted WSS components (already normalized)
         y_true: [num_nodes, 2] true WSS components (already normalized)
+        node_features: [num_nodes, feature_dim] node features (optional, for masking)
         reduction: 'mean' or 'sum'
+        mask_top_wall: If True, only compute loss on stationary walls (bottom/left/right)
         
     Returns:
         loss: scalar tensor
     """
-    # Both y_pred and y_true are already log1p normalized by dataset
-    # Just compute MSE
-    loss = nn.functional.mse_loss(y_pred, y_true, reduction=reduction)
+    # Apply mask to exclude top wall from loss computation
+    if mask_top_wall and node_features is not None:
+        # Feature index 2 is 'on_top' indicator
+        on_top = node_features[:, 2].bool()
+        mask = ~on_top  # Keep only stationary walls
+        
+        # Compute loss only on masked nodes
+        loss = nn.functional.mse_loss(y_pred[mask], y_true[mask], reduction=reduction)
+    else:
+        # Standard loss on all nodes
+        loss = nn.functional.mse_loss(y_pred, y_true, reduction=reduction)
     
     return loss
 
@@ -110,8 +120,8 @@ def train_epoch(model, loader, optimizer, device, grad_clip=None):
         # Forward pass
         y_pred = model(batch)
         
-        # Compute loss
-        loss = compute_loss(y_pred, batch.y)
+        # Compute loss (on all 4 walls)
+        loss = compute_loss(y_pred, batch.y, node_features=batch.x, mask_top_wall=False)
         
         # Backward pass
         optimizer.zero_grad()
@@ -153,8 +163,8 @@ def validate_epoch(model, loader, device):
         # Forward pass
         y_pred = model(batch)
         
-        # Compute loss
-        loss = compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
+        # Compute loss (on all 4 walls)
+        loss = compute_loss(y_pred, batch.y, node_features=batch.x, mask_top_wall=False) + kl_weight*kl_loss(model)
         
         # Accumulate
         total_loss += loss.item() * batch.num_graphs

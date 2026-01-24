@@ -66,8 +66,11 @@ def denormalize_wss(wss_normalized, norm_stats):
     wss_normalized = torch.from_numpy(wss_normalized).float()
     
     # Reverse normalization: denormalized_log = normalized * std + mean
-    sign = torch.sign(wss_normalized)
-    log_mag = wss_normalized.abs() * target_std + target_mean
+    signed_log = wss_normalized * target_std + target_mean
+    
+    # Extract sign from denormalized space (critical: mean-centering causes sign flips)
+    sign = torch.sign(signed_log)
+    log_mag = torch.abs(signed_log)
     
     # Reverse log1p transform: mag = exp(log) - 1
     mag = torch.expm1(log_mag)
