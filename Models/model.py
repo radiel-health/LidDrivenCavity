@@ -5,7 +5,7 @@ Two-stream architecture:
 1. Flow Encoder: MLP([Re, Lx, Ly] → context_dim)
 2. Geometry Encoder: GCN(node_features → hidden_dim)
 3. FiLM Modulation: Context modulates geometry via γ, β
-4. Task Head: GCN + MLP → WSS predictions
+4. Task Head: GAT + MLP → WSS predictions
 
 Key design choices:
 - Ring topology: Each node connects to neighbors along boundary perimeter
@@ -17,7 +17,7 @@ Key design choices:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.data import Data, Batch
 import torchbnn as bnn
 from math import ceil
@@ -168,93 +168,78 @@ class FiLMLayer(nn.Module):
 
 
 class TaskHead(nn.Module):
-    """
-    Final prediction head: GCN layers + MLP → WSS predictions.
-    
-    Architecture:
-        - 2 GCN layers for further message passing
-        - MLP for per-node predictions
-        - Output: 2D (x_wss, y_wss) components
-    
-    Args:
-        input_dim: Input feature dimension (typically hidden_dim)
-        hidden_dim: Hidden dimension for GCN layers
-        output_dim: Output dimension (2 for WSS x,y components)
-        num_layers: Number of GCN layers
-        dropout: Dropout rate
-    """
-    
     def __init__(self, input_dim=64, hidden_dim=128, output_dim=2, 
+<<<<<<< Updated upstream
                  num_layers=2, dropout=0.2, monte_carlo_sims=100, output_range=False):
+=======
+                 num_layers=2, dropout=0.1, monte_carlo_sims=100, output_range=False, heads=4):
+>>>>>>> Stashed changes
         super().__init__()
+        
+        # Ensure dimensionality consistency
+        if hidden_dim % heads != 0:
+            raise ValueError(f"hidden_dim ({hidden_dim}) must be divisible by heads ({heads})")
         
         self.num_layers = num_layers
         self.dropout = dropout
-        assert monte_carlo_sims > 0
+        self.heads = heads
         self.monte_carlo_sims = monte_carlo_sims
         self.output_range = output_range
         
-        # GCN layers
-        self.convs = nn.ModuleList([
-            GCNConv(input_dim if i == 0 else hidden_dim, hidden_dim)
-            for i in range(num_layers)
-        ])
+        head_dim = hidden_dim // heads
         
-        # Layer norms
+        # GAT layers
+        self.convs = nn.ModuleList()
+        for i in range(num_layers):
+            # First layer transitions from input_dim -> hidden_dim
+            # Subsequent layers stay at hidden_dim
+            layer_in = input_dim if i == 0 else hidden_dim
+            
+            self.convs.append(GATConv(
+                in_channels=layer_in,
+                out_channels=head_dim, 
+                heads=heads,
+                concat=True,
+                dropout=dropout
+            ))
+        
+        # Layer norms (stay the same size because concat=True)
         self.norms = nn.ModuleList([
             nn.LayerNorm(hidden_dim)
             for _ in range(num_layers)
         ])
         
-        # MLP head for final prediction
-        # TODO: replace with custom class for BNN
+        # MLP head for final prediction (remains the same)
         self.mlp = nn.Sequential(
-            # nn.Linear(hidden_dim, hidden_dim // 2),
             bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim, out_features=hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            # nn.Linear(hidden_dim // 2, output_dim)
             bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=hidden_dim // 2, out_features=output_dim)
         )
-    
-    
+
     def forward(self, h, edge_index):
-        """
-        Args:
-            h: [num_nodes, input_dim] input features
-            edge_index: [2, num_edges] edge connectivity
-            
-        Returns:
-            y_pred: [num_nodes, output_dim] WSS predictions
-        """
-        # Apply GCN layers
         for i in range(self.num_layers):
             h_in = h
             
-            # Graph convolution
             h = self.convs[i](h, edge_index)
-            
-            # Normalization + activation
             h = self.norms[i](h)
             h = F.relu(h)
             
-            # Dropout
             if self.training:
                 h = F.dropout(h, p=self.dropout)
             
-            # Residual connection
+            # Residual connection: only if shapes match
             if i > 0 and h.shape == h_in.shape:
                 h = h + h_in
         
-        ## Final MLP prediction
-        #y_pred = self.mlp(h)
+        # Monte Carlo sampling via Bayesian MLP
         y_preds = [self.mlp(h) for _ in range(self.monte_carlo_sims)]
         stacked_preds = torch.stack(y_preds)
+        
         if self.output_range:
-            # get an interval from 2.5 to 97.5 percentile
-            return torch.quantile(stacked_preds, torch.tensor([0.025, 0.975]), dim=0)
+            return torch.quantile(stacked_preds, torch.tensor([0.025, 0.975], device=h.device), dim=0)
         else:
-            return torch.mean(stacked_preds, dim=0) 
+            return torch.mean(stacked_preds, dim=0)
 
 class WSSPredictor(nn.Module):
     """
@@ -425,7 +410,7 @@ def get_model_summary(model):
     print(f"  Flow Encoder: [3] → [64] → [64]")
     print(f"  Geometry Encoder: [10] → [64] (3 GCN layers)")
     print(f"  FiLM Modulation: context[64] ⊙ geometry[64]")
-    print(f"  Task Head: [64] → [128] → [2] (2 GCN + MLP)")
+    print(f"  Task Head: [64] → [128] → [2] (2 GAT + MLP)")
     print()
     
     print("=" * 80)

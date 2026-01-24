@@ -1,4 +1,5 @@
 {
+<<<<<<< Updated upstream
   "test_loss_normalized": 0.05026105185970664,
   "mae_x_Pa": 4.912478956953237e-08,
   "mae_y_Pa": 1.1005586486589891e-07,
@@ -15,4 +16,22 @@
   "mean_rel_error_x_percent": 17.616439819335938,
   "mean_rel_error_y_percent": 92.36688232421875,
   "mean_rel_error_magnitude_percent": 12.103404998779297
+=======
+  "test_loss_normalized": 2.2714192867279053,
+  "mae_x_Pa": 6.053520564819337e-07,
+  "mae_y_Pa": 3.5564281120059604e-07,
+  "mae_magnitude_Pa": 2.4399827225352055e-07,
+  "rmse_x_Pa": 8.764821473050688e-07,
+  "rmse_y_Pa": 6.104537533246912e-07,
+  "rmse_magnitude_Pa": 6.718640293001954e-07,
+  "r2_x": -1.9307598239756025,
+  "r2_y": -1.7897297629832525,
+  "r2_magnitude": -0.31166842517555593,
+  "median_rel_error_x_percent": 201.16403198242188,
+  "median_rel_error_y_percent": 153.87899780273438,
+  "median_rel_error_magnitude_percent": 14.6373291015625,
+  "mean_rel_error_x_percent": 174.8905487060547,
+  "mean_rel_error_y_percent": 224.2263946533203,
+  "mean_rel_error_magnitude_percent": 43.35439682006836
+>>>>>>> Stashed changes
 }
