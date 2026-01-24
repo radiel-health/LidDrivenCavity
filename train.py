@@ -154,7 +154,7 @@ def validate_epoch(model, loader, device):
         y_pred = model(batch)
         
         # Compute loss
-        loss = compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
+        loss = (1-kl_weight)*compute_loss(y_pred, batch.y) + kl_weight*kl_loss(model)
         
         # Accumulate
         total_loss += loss.item() * batch.num_graphs
