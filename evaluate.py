@@ -14,7 +14,6 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from config import config
 from dataset import get_dataloaders
 from Models.model import WSSPredictor
-from torchbnn.utils import freeze
 
 
 def load_best_model(checkpoint_path='Models/best_model.pt'):
@@ -859,7 +858,6 @@ def main():
     # Load trained model
     print("\nLoading trained model...")
     model = load_best_model('Models/best_model.pt')
-    freeze(model)
     
     # Evaluate
     print("\nRunning evaluation on test set...")
